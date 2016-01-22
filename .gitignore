@@ -1,0 +1,67 @@
+```{r}
+install.packages("devtools", repos = 'http://cran.us.r-project.org')     
+library("devtools")                                     # "load" package
+install_bitbucket("perossichi/DataAnalytics",repos = 'http://cran.us.r-project.org')         # install the course dataset package
+                                                        # note: this will take a few seconds
+                                                      # depending on internet connection 
+library("DataAnalytics")
+library("ggplot2")
+library("usdm")
+load("cat_buy.rda")
+
+ind.est <- sample(nrow(cat_buy), size = floor(0.5*nrow(cat_buy)), replace =FALSE)
+est.sample <- cat_buy[ind.est,]
+holdout_sample <- cat_buy[-ind.est,]
+
+```
+### part B
+
+Fit a logistic regression model using the estimation sample produced in part A.  Eliminate insignificant variables.
+
+Discuss your final specification, do the signs of the coefficients make sense to you?
+
+Should you worry about multi-colinearity in this dataset?  
+```{r}
+out_full=glm(buytabw~.,data=est.sample,family="binomial")
+summary(out_full)
+out_simple=glm(buytabw~.-divsords,data=est.sample,family="binomial")
+summary(out_simple)
+
+vif(est.sample)
+
+```
+
+
+From the full model summary table we can see divsords is not significant, after eliminating that variable we have a slightly lowe AIC model. The recency variables make sense as we would expect the customers to be less likely to buy as their last purchase grows further away, the volume variables have positive coefficients which make sense as well because loyal customerns stay with us.
+
+As far as multicolinearity, I do not think we need to take that into consideration because even though the variables may be highly correlated with each other, we are not trying to estimate individual variable's effect of the decision. What we are doing here is to calculate a propensity score that takes all relevant variables into account. Plus, the VIF for all variables are not significant.
+
+
+### part C
+
+Use the best-fit from part B to predict using the holdout sample.   
+
+Plot boxplots of the fitted probabilities for each value of `buytabw` for the holdout sample (see code snippets from Chapter IV for an example) 
+
+Compute a "lift" table as done in Chapter IV code snippets.
+
+```{r}
+phat=predict(out_simple,holdout_sample,type="response")
+
+qplot(factor(holdout_sample$buytabw),phat,geom="boxplot",fill=I("pink"),xlab="Buy Winter Tab") +
+  theme(axis.title=element_text(size=rel(1.5)),
+        axis.text=element_text(size=rel(1.25),colour=I("red")))
+
+deciles=cut(phat,breaks=quantile(phat,probs=c(seq(from=0,to=1,by=.1))),include.lowest=TRUE)
+deciles=as.numeric(deciles)
+df=data.frame(deciles=deciles,phat=phat,buytabw=holdout_sample$buytabw)
+lift=aggregate(df,by=list(deciles),FUN="mean",data=df) # find mean default for each decile
+lift=lift[,3:4]
+lift[,3]=lift[,2]/mean(holdout_sample$buytabw)
+names(lift)=c("decile","Mean Response","Lift Factor")
+lift
+
+
+````
+
+As we can see from the lift table, as the mean repsonse grow, the lift factor grows monotonicaly, so the model should have done a good job.
